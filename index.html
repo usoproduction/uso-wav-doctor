@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<!--
+  U.S.O. WAV Doctor
+  Required Notice: Copyright (c) 2026 U.S.O. Production — Unidentified Sound Object (https://unidentifiedsoundobject.com/)
+  Licensed under the PolyForm Shield License 1.0.0: https://polyformproject.org/licenses/shield/1.0.0
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>U.S.O. WAV Doctor — repair corrupted WAV files after a crash</title>
+<meta name="description" content="Free, private, in-browser tool that repairs .wav files left unplayable by a crash, power loss or full disk. Rebuilds the broken RIFF header without uploading anything.">
+<meta name="author" content="U.S.O. Production — Unidentified Sound Object">
+<meta name="theme-color" content="#14171a">
+<meta property="og:type" content="website">
+<meta property="og:title" content="U.S.O. WAV Doctor">
+<meta property="og:description" content="Repair .wav files that won't open after a crash. Runs entirely in your browser — nothing is uploaded.">
+<meta property="og:site_name" content="Unidentified Sound Object">
+<meta name="twitter:card" content="summary">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2314171a'/%3E%3Cpath d='M4 16h5l3-9 4 18 4-14 3 5h5' fill='none' stroke='%23e8a33d' stroke-width='2.5' stroke-linejoin='round' stroke-linecap='round'/%3E%3C/svg%3E">
+<style>
+  :root{
+    --bg: #14171a;
+    --panel: #1c2024;
+    --panel-2: #21262b;
+    --line: #2e343a;
+    --text: #d8d3c5;
+    --muted: #8a9096;
+    --amber: #e8a33d;
+    --amber-dim: #8a662a;
+    --green: #6fbf73;
+    --red: #d9534f;
+    --mono: "SF Mono", "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+  }
+  *{ box-sizing:border-box; }
+  body{
+    margin:0; min-height:100vh;
+    background:
+      radial-gradient(ellipse at top, #1a1e22 0%, var(--bg) 60%);
+    background-color:var(--bg);
+    color:var(--text);
+    font-family:var(--mono);
+    font-size:13px;
+    line-height:1.55;
+    padding:32px 16px 80px;
+  }
+  .wrap{ max-width:720px; margin:0 auto; }
+  a{ color:inherit; border-bottom:1px solid var(--amber-dim); text-decoration:none; }
+  a:hover{ color:var(--amber); }
+  code{ color:var(--amber); }
+
+  header{ margin-bottom:28px; }
+  .brand{
+    display:flex; align-items:baseline; gap:10px;
+    font-size:20px; letter-spacing:0.5px; color:var(--amber);
+    font-weight:600; margin:0;
+  }
+  .brand .dot{ color:var(--red); animation:blink 1.6s steps(2) infinite; }
+  @keyframes blink{ 50%{ opacity:0.2; } }
+  @media (prefers-reduced-motion: reduce){ .brand .dot{ animation:none; } }
+  .stamp{
+    color:var(--muted); font-size:10px; letter-spacing:1.5px;
+    text-transform:uppercase; margin-top:2px;
+  }
+  .subtitle{ color:var(--text); margin-top:14px; font-size:13px; }
+  .subtitle span{ color:var(--muted); }
+
+  .drop{
+    border:1px dashed var(--line);
+    border-radius:4px;
+    padding:36px 20px;
+    text-align:center;
+    background:var(--panel);
+    cursor:pointer;
+    transition:border-color .15s, background .15s;
+    position:relative;
+  }
+  .drop:hover, .drop.drag, .drop:focus-visible{
+    border-color:var(--amber-dim);
+    background:var(--panel-2);
+    outline:none;
+  }
+  .drop input{ display:none; }
+  .drop .icon{ font-size:22px; color:var(--amber); margin-bottom:8px; }
+  .drop .main{ color:var(--text); }
+  .drop .hint{ color:var(--muted); font-size:11px; margin-top:6px; }
+
+  .notice{ margin-top:10px; font-size:12px; color:var(--amber); min-height:1em; }
+
+  .files{ margin-top:22px; display:flex; flex-direction:column; gap:14px; }
+
+  .card{
+    border:1px solid var(--line);
+    border-radius:4px;
+    background:var(--panel);
+    overflow:hidden;
+  }
+  .card-head{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:10px 14px;
+    background:var(--panel-2);
+    border-bottom:1px solid var(--line);
+  }
+  .card-head .name{ color:var(--text); font-weight:600; word-break:break-all; padding-right:8px; }
+  .status{
+    flex:none;
+    font-size:11px; padding:2px 8px; border-radius:3px;
+    text-transform:uppercase; letter-spacing:0.5px;
+  }
+  .status.ok{ background:rgba(111,191,115,0.12); color:var(--green); }
+  .status.warn{ background:rgba(232,163,61,0.12); color:var(--amber); }
+  .status.bad{ background:rgba(217,83,79,0.12); color:var(--red); }
+
+  .log{
+    padding:12px 14px;
+    font-size:12px;
+    color:var(--muted);
+    white-space:pre-wrap;
+    word-break:break-word;
+  }
+  .log .l-ok{ color:var(--green); }
+  .log .l-warn{ color:var(--amber); }
+  .log .l-bad{ color:var(--red); }
+  .log .l-dim{ color:var(--muted); }
+
+  .chunkmap{
+    display:flex; height:10px; border-radius:2px; overflow:hidden;
+    margin:12px 14px 0; border:1px solid var(--line);
+  }
+  .chunkmap div{ height:100%; }
+  .seg-riff{ background:#3a4046; }
+  .seg-fmt{ background:var(--amber-dim); }
+  .seg-data{ background:var(--green); opacity:0.55; }
+  .seg-unknown{ background:#5a4f6a; }
+  .seg-bad{ background:var(--red); opacity:0.6; }
+  .legend{ display:flex; flex-wrap:wrap; gap:4px 14px; margin:6px 14px 0; font-size:10px; color:var(--muted); }
+  .legend i{ display:inline-block; width:8px; height:8px; margin-right:5px; border-radius:1px; vertical-align:middle; }
+
+  .actions{
+    display:flex; gap:10px; padding:0 14px 14px; flex-wrap:wrap; align-items:center;
+  }
+  button{
+    font-family:var(--mono);
+    background:var(--amber);
+    color:#1a1408;
+    border:none;
+    padding:8px 14px;
+    border-radius:3px;
+    font-size:12px;
+    font-weight:600;
+    cursor:pointer;
+    letter-spacing:0.3px;
+  }
+  button:hover{ filter:brightness(1.08); }
+  button:focus-visible{ outline:2px solid var(--amber); outline-offset:2px; }
+  button.secondary{
+    background:transparent;
+    color:var(--text);
+    border:1px solid var(--line);
+  }
+  button.secondary:hover{ border-color:var(--amber-dim); }
+  button:disabled{ opacity:0.4; cursor:default; }
+
+  .player{ padding:0 14px 14px; display:none; }
+  .player.show{ display:block; }
+  .player audio{ width:100%; height:36px; }
+  .player .cap{ font-size:11px; color:var(--muted); margin-bottom:4px; }
+
+  .manual{
+    padding:12px 14px 14px; border-top:1px solid var(--line);
+    display:none;
+  }
+  .manual.show{ display:block; }
+  .manual .intro{ font-size:11px; color:var(--muted); margin:0 0 10px; }
+  .manual .row{
+    display:flex; gap:10px; flex-wrap:wrap; margin-bottom:10px;
+  }
+  .manual .err{ color:var(--red); font-size:11px; min-height:1em; margin-bottom:8px; }
+  .field{ display:flex; flex-direction:column; gap:4px; }
+  .field label{ font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px; }
+  .field select, .field input{
+    font-family:var(--mono);
+    background:var(--bg);
+    border:1px solid var(--line);
+    color:var(--text);
+    padding:6px 8px;
+    border-radius:3px;
+    font-size:12px;
+    width:132px;
+  }
+
+  section.doc{ margin-top:40px; }
+  section.doc h2{
+    font-size:12px; color:var(--amber); text-transform:uppercase; letter-spacing:1.2px;
+    font-weight:600; margin:0 0 12px; padding-bottom:6px; border-bottom:1px solid var(--line);
+  }
+  section.doc p{ margin:0 0 10px; }
+  section.doc ol, section.doc ul{ margin:0 0 10px; padding-left:22px; }
+  section.doc li{ margin-bottom:6px; }
+  section.doc li::marker{ color:var(--amber-dim); }
+  .muted{ color:var(--muted); }
+
+  .twocol{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  @media (max-width:600px){ .twocol{ grid-template-columns:1fr; } }
+  .box{ border:1px solid var(--line); border-radius:4px; background:var(--panel); padding:12px 14px; }
+  .box h3{ margin:0 0 8px; font-size:11px; text-transform:uppercase; letter-spacing:0.8px; }
+  .box.yes h3{ color:var(--green); }
+  .box.no h3{ color:var(--red); }
+  .box ul{ margin:0; padding-left:18px; }
+
+  table.guide{ width:100%; border-collapse:collapse; font-size:12px; }
+  table.guide th, table.guide td{ text-align:left; vertical-align:top; padding:8px 10px; border-bottom:1px solid var(--line); }
+  table.guide th{ color:var(--muted); font-weight:normal; font-size:10px; text-transform:uppercase; letter-spacing:0.6px; }
+  table.guide td:first-child{ width:52%; }
+
+  details{ border-bottom:1px solid var(--line); padding:10px 0; }
+  details summary{ cursor:pointer; color:var(--text); list-style:none; }
+  details summary::-webkit-details-marker{ display:none; }
+  details summary::before{ content:"+ "; color:var(--amber); }
+  details[open] summary::before{ content:"− "; }
+  details p{ margin:8px 0 0 16px !important; color:var(--muted); }
+
+  footer{
+    margin-top:40px; color:var(--muted); font-size:11px; line-height:1.6;
+    border-top:1px solid var(--line); padding-top:16px;
+  }
+  footer p{ margin:0 0 8px; }
+  footer .credit{ margin-top:14px; color:#6a7076; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1 class="brand">U.S.O. WAV DOCTOR<span class="dot" aria-hidden="true">_</span></h1>
+    <div class="stamp">Unidentified Sound Object</div>
+    <p class="subtitle">Repairs .wav files that won't open after a crash, a power cut or a full disk.<br>
+      <span>Runs entirely in your browser — your audio is never uploaded anywhere.</span></p>
+  </header>
+
+  <main>
+  <div class="drop" id="drop" role="button" tabindex="0" aria-label="Choose .wav files to analyze">
+    <div class="icon" aria-hidden="true">◇</div>
+    <div class="main">Drop one or more .wav files here, or click to choose</div>
+    <div class="hint">your original file is never modified — a repaired copy is downloaded instead<br>files up to about 1–2 GB, depending on your browser and memory</div>
+    <input type="file" id="fileInput" accept=".wav,.wave,.bwf,audio/wav,audio/x-wav,audio/wave" multiple>
+  </div>
+  <div class="notice" id="notice" role="status" aria-live="polite"></div>
+
+  <div class="files" id="files"></div>
+
+  <section class="doc" id="how">
+    <h2>How to use it</h2>
+    <ol>
+      <li><b>Keep the damaged file safe.</b> Work on a copy if you can, and don't record over the drive or card it came from.</li>
+      <li><b>Drop the file on the box above</b> (or click it to browse). You can add several files at once.</li>
+      <li><b>Read the report.</b> <span style="color:var(--green)">OK</span> means the header is already fine. <span style="color:var(--amber)">Header needs fixing</span> means the tool can repair it automatically. <span style="color:var(--red)">Needs manual input</span> means the format information is lost and you'll have to tell the tool how the file was recorded (see below).</li>
+      <li><b>Press ▶ Preview</b> to listen to the result right on the page, then <b>⬇ Repair &amp; download</b>. You'll get a new file called <code>yourfile_repaired.wav</code> in your downloads folder.</li>
+      <li><b>Open the repaired file in your DAW or editor and listen all the way through</b>, especially the last seconds, where the crash happened. A short glitch at the very end is normal and can simply be trimmed.</li>
+    </ol>
+  </section>
+
+  <section class="doc" id="scope">
+    <h2>What it can and can't fix</h2>
+    <div class="twocol">
+      <div class="box yes">
+        <h3>Can fix</h3>
+        <ul>
+          <li>Recordings interrupted by an app crash, a frozen computer, a power cut, a full disk or an unplugged drive</li>
+          <li>Files that show 0:00 duration, won't open, or play silence although the file size is large</li>
+          <li>Wrong or missing size values in the header</li>
+          <li>A completely missing header, as long as the raw audio is still in the file (manual mode)</li>
+        </ul>
+      </div>
+      <div class="box no">
+        <h3>Can't fix</h3>
+        <ul>
+          <li>Audio that was never written to disk — if the file is 0 KB or tiny, the audio isn't in it</li>
+          <li>Files damaged by a corrupted card or drive (use a file-recovery tool first, then come back)</li>
+          <li>Dropouts, clicks or gaps inside the recording itself</li>
+          <li>Compressed formats: MP3, AAC, FLAC, OGG, ALAC…</li>
+          <li>Files over 4 GB (RF64/W64 output is not supported)</li>
+        </ul>
+      </div>
+    </div>
+    <p class="muted" style="margin-top:12px">Intact metadata chunks such as BWF <code>bext</code>, <code>iXML</code>, markers (<code>cue</code>) and <code>LIST</code> info are kept in the repaired copy. Damaged ones are dropped.</p>
+  </section>
+
+  <section class="doc" id="manual-guide">
+    <h2>Manual mode: finding the right settings</h2>
+    <p>If the tool can't find the format information, it asks you for it. Start from what your recorder or session was set to — <b>48000 Hz / 24-bit / stereo / PCM</b> is the most common combination, and it's the default. Press <b>▶ Preview</b> after each change and listen:</p>
+    <table class="guide">
+      <thead><tr><th>What you hear</th><th>What to change</th></tr></thead>
+      <tbody>
+        <tr><td>Loud harsh noise or heavy distortion, but you can sense the rhythm of the recording underneath</td><td>Bit depth (try 16, 24, 32) or format (PCM vs float). 32-bit recordings are usually float.</td></tr>
+        <tr><td>Pure white noise with no structure at all</td><td>Format first (PCM / float), then bit depth. If nothing works, the data may not be audio.</td></tr>
+        <tr><td>Sounds right but too high and fast, or too low and slow</td><td>Sample rate (e.g. 44100 vs 48000, or 48000 vs 96000).</td></tr>
+        <tr><td>Roughly half or double speed with a grainy, gritty edge</td><td>Number of channels (mono vs stereo, or a multichannel count).</td></tr>
+        <tr><td>Correct sound but left and right swapped, or a strong click at the very start</td><td>Data offset. Leave the suggested value or try 44; it should be a multiple of the bytes per frame.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="doc" id="faq">
+    <h2>FAQ</h2>
+    <details>
+      <summary>Is my audio uploaded or stored anywhere?</summary>
+      <p>No. The file is read and rebuilt by your browser on your own computer. Nothing is sent over the network, there are no cookies and no analytics. You can save this page and use it offline.</p>
+    </details>
+    <details>
+      <summary>Will it change my original file?</summary>
+      <p>Never. The browser has no way to write back to it: the tool only creates a new <code>_repaired.wav</code> copy.</p>
+    </details>
+    <details>
+      <summary>Why did my file break in the first place?</summary>
+      <p>A WAV file starts with a short header that says how long the audio is. Most recording apps write a placeholder there and fill in the real values only when you press stop. If the app crashes first, the audio is on disk but the header still says "0 bytes", so players think the file is empty. This tool measures the real length and rewrites the header.</p>
+    </details>
+    <details>
+      <summary>How large can files be?</summary>
+      <p>The whole file is loaded into memory, so the limit depends on your browser and computer. Files up to about 1–2 GB work in current desktop browsers; WAV files can't exceed 4 GB anyway.</p>
+    </details>
+    <details>
+      <summary>Which browsers are supported?</summary>
+      <p>So far it has been tested on desktop Google Chrome. Other modern browsers (Edge, Firefox, Safari) should work, but haven't been tested yet — if something goes wrong, try Chrome.</p>
+    </details>
+    <details>
+      <summary>What does the coloured bar on each file mean?</summary>
+      <p>It's a map of the file's internal structure: grey is the header, amber the format chunk, purple metadata, green the audio and red a region that couldn't be read. A healthy file is mostly green.</p>
+    </details>
+    <details>
+      <summary>The repaired file still doesn't sound right. What now?</summary>
+      <p>Try manual mode with different settings (button "Force manual parameters"). If the audio itself was damaged, a header repair can't help and a specialised audio-restoration tool is the next step.</p>
+    </details>
+  </section>
+  </main>
+
+  <footer>
+    <p><b>Privacy:</b> everything happens locally in your browser. No uploads, no cookies, no tracking.</p>
+    <p><b>License:</b> free for everyone to use, including in paid professional work. You may share and modify it, but you may not sell it, repackage it or offer a competing product or service based on it. Source available under the <a href="https://polyformproject.org/licenses/shield/1.0.0" target="_blank" rel="noopener">PolyForm Shield License 1.0.0</a>.</p>
+    <p><b>Disclaimer:</b> provided as-is, without warranty. Always keep the original file until you've checked the repaired copy.</p>
+    <p>Version 1.0 · October 2026 · tested on Google Chrome</p>
+    <div class="credit">U.S.O. Production — <a href="https://unidentifiedsoundobject.com/" target="_blank" rel="noopener">unidentifiedsoundobject.com</a></div>
+  </footer>
+</div>
+
+<script>
+const HEADER_SCAN_LIMIT = 4 * 1024 * 1024;   // brute-force marker search stays inside the header area
+const MAX_WAV_BYTES = 0xFFFFFFFF;
+const DROP_CHUNKS = new Set(['JUNK','junk','PAD ','FLLR','ds64','fake']);
+
+const dropEl = document.getElementById('drop');
+const inputEl = document.getElementById('fileInput');
+const filesEl = document.getElementById('files');
+const noticeEl = document.getElementById('notice');
+
+dropEl.addEventListener('click', () => inputEl.click());
+dropEl.addEventListener('keydown', e => {
+  if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); inputEl.click(); }
+});
+['dragenter','dragover'].forEach(ev => dropEl.addEventListener(ev, e => {
+  e.preventDefault(); dropEl.classList.add('drag');
+}));
+['dragleave','drop'].forEach(ev => dropEl.addEventListener(ev, e => {
+  e.preventDefault(); dropEl.classList.remove('drag');
+}));
+dropEl.addEventListener('drop', e => handleFiles(e.dataTransfer.files));
+inputEl.addEventListener('change', e => { handleFiles(e.target.files); inputEl.value = ''; });
+// a file dropped outside the box would otherwise make the browser navigate away
+['dragover','drop'].forEach(ev => window.addEventListener(ev, e => e.preventDefault()));
+
+function handleFiles(fileList){
+  const skipped = [];
+  [...fileList].forEach(f => {
+    if(!/\.(wav|wave|bwf)$/i.test(f.name)){ skipped.push(f.name); return; }
+    processFile(f);
+  });
+  noticeEl.textContent = skipped.length
+    ? `Skipped (not a .wav file): ${skipped.join(', ')}`
+    : '';
+}
+
+function readStr(view, offset, len){
+  let s = '';
+  for(let i=0;i<len;i++) s += String.fromCharCode(view.getUint8(offset+i));
+  return s;
+}
+
+function isChunkId(view, offset){
+  if(offset + 4 > view.byteLength) return false;
+  for(let i=0;i<4;i++){
+    const c = view.getUint8(offset+i);
+    if(c < 0x20 || c > 0x7e) return false;
+  }
+  return true;
+}
+
+function parseFmt(buf, start, size){
+  if(size < 16 || start + 16 > buf.byteLength) return null;
+  const fv = new DataView(buf, start, 16);
+  // a garbage size must not drag half the file into the rebuilt fmt chunk
+  const sane = size <= 64 && start + size <= buf.byteLength;
+  const f = {
+    start, size: sane ? size : 16,
+    audioFormat: fv.getUint16(0,true),
+    channels: fv.getUint16(2,true),
+    sampleRate: fv.getUint32(4,true),
+    byteRate: fv.getUint32(8,true),
+    blockAlign: fv.getUint16(12,true),
+    bitsPerSample: fv.getUint16(14,true)
+  };
+  if(f.channels < 1 || f.channels > 256) return null;
+  if(f.sampleRate < 1000 || f.sampleRate > 1536000) return null;
+  if(f.bitsPerSample < 1 || f.bitsPerSample > 64) return null;
+  f.frameBytes = f.blockAlign || f.channels * Math.ceil(f.bitsPerSample/8);
+  return f;
+}
+
+function fmtLabel(f){
+  const names = {1:'PCM', 3:'float', 0xFFFE:'extensible'};
+  return `${f.sampleRate} Hz, ${f.channels} ch, ${f.bitsPerSample}-bit ${names[f.audioFormat] || 'format ' + f.audioFormat}`;
+}
+
+// decide how many bytes of the data chunk are real audio
+function resolveDataSize(view, dataStart, declared, total){
+  const remaining = total - dataStart;
+  if(declared === remaining) return {size: remaining, trusted: true};
+  if(declared > 0 && declared < remaining){
+    // a smaller declared size is trustworthy only if a valid chunk (or EOF) follows it;
+    // otherwise it's a stale value left by a recorder that updates the header periodically
+    const tail = dataStart + declared + (declared % 2);
+    if(tail >= total || (tail + 8 <= total && isChunkId(view, tail) &&
+       tail + 8 + view.getUint32(tail+4, true) <= total)){
+      return {size: declared, trusted: true};
+    }
+  }
+  return {size: remaining, trusted: false};
+}
+
+function findMarker(view, from, to, marker){
+  const b = [...marker].map(c=>c.charCodeAt(0));
+  const end = Math.min(to, view.byteLength) - 4;
+  for(let i=Math.max(0,from); i<=end; i++){
+    if(view.getUint8(i)===b[0] && view.getUint8(i+1)===b[1] &&
+       view.getUint8(i+2)===b[2] && view.getUint8(i+3)===b[3]) return i;
+  }
+  return -1;
+}
+
+function analyze(buf){
+  const view = new DataView(buf);
+  const total = buf.byteLength;
+  const log = [];
+  const segments = [];
+  const pre = [];          // chunks before data, in file order: {id, start, size}
+  const post = [];         // intact chunks after data
+  let fmt = null, data = null;
+  let needsFix = false, walkFailed = false;
+
+  const head = total >= 12 ? readStr(view,0,4) : '';
+  const hasRiff = total >= 12 && ['RIFF','RF64','BW64'].includes(head) && readStr(view,8,4)==='WAVE';
+
+  if(hasRiff){
+    segments.push({cls:'seg-riff', bytes:12});
+    const declaredRiff = view.getUint32(4, true);
+    if(head !== 'RIFF'){
+      log.push(`<span class="l-warn">⚠ ${head} header (large-file WAV) — will be rewritten as standard RIFF</span>`);
+      needsFix = true;
+    } else {
+      log.push(`<span class="l-ok">✓ RIFF/WAVE signature found</span>`);
+      log.push(`<span class="l-dim">  declared file size: ${declaredRiff + 8} — actual: ${total}</span>`);
+      if(declaredRiff !== total-8){
+        log.push(`<span class="l-warn">⚠ declared file size is wrong — will be recalculated</span>`);
+        needsFix = true;
+      }
+    }
+
+    let offset = 12;
+    while(offset + 8 <= total){
+      if(!isChunkId(view, offset)){
+        log.push(`<span class="l-warn">⚠ unreadable data at byte ${offset} — switching to a direct search</span>`);
+        segments.push({cls:'seg-bad', bytes: total - offset});
+        walkFailed = true; break;
+      }
+      const id = readStr(view, offset, 4);
+      const size = view.getUint32(offset+4, true);
+      const start = offset + 8;
+
+      if(id === 'data' && !data){
+        const r = resolveDataSize(view, start, size, total);
+        data = {start, size: r.size};
+        log.push(`<span class="l-dim">  audio ('data') starts at byte ${start}</span>`);
+        if(r.trusted){
+          log.push(`<span class="l-ok">✓ audio size in the header matches the file</span>`);
+        } else {
+          const what = size === 0 ? 'zero (recording was never finalised)'
+                     : size === 0xFFFFFFFF ? 'a placeholder (recording was never finalised)'
+                     : size > total - start ? `${size}, larger than the file (truncated recording)`
+                     : `${size}, smaller than the audio actually on disk`;
+          log.push(`<span class="l-warn">⚠ audio size in the header is ${what} — will use the ${total - start} bytes actually present</span>`);
+          needsFix = true;
+        }
+        segments.push({cls:'seg-data', bytes: 8 + data.size});
+        offset = start + data.size + (data.size % 2);
+        continue;
+      }
+
+      const next = start + size + (size % 2);
+      if(next > total){
+        log.push(`<span class="l-warn">⚠ chunk '${escapeHtml(id)}' claims more bytes than the file has — switching to a direct search</span>`);
+        if(id === 'fmt ' && !fmt){
+          fmt = parseFmt(buf, start, size);
+          if(fmt) log.push(`<span class="l-ok">✓ format: ${fmtLabel(fmt)}</span>`);
+        }
+        segments.push({cls:'seg-bad', bytes: total - offset});
+        walkFailed = true; break;
+      }
+      if(id === 'fmt ' && !fmt){
+        fmt = parseFmt(buf, start, size);
+        if(fmt){
+          pre.push({id, start, size});
+          log.push(`<span class="l-ok">✓ format: ${fmtLabel(fmt)}</span>`);
+          segments.push({cls:'seg-fmt', bytes: next - offset});
+        } else {
+          log.push(`<span class="l-bad">✗ format chunk is present but contains impossible values</span>`);
+          segments.push({cls:'seg-bad', bytes: next - offset});
+        }
+      } else {
+        if(!DROP_CHUNKS.has(id)){
+          (data ? post : pre).push({id, start, size});
+          log.push(`<span class="l-dim">  metadata '${escapeHtml(id.trim())}' (${size} bytes) — kept</span>`);
+        }
+        segments.push({cls:'seg-unknown', bytes: next - offset});
+      }
+      offset = next;
+    }
+    if(data && offset < total && !walkFailed){
+      segments.push({cls:'seg-bad', bytes: total - offset});
+    }
+  } else {
+    log.push(`<span class="l-bad">✗ no WAV header at the start of the file</span>`);
+    needsFix = true;
+  }
+
+  // fallback: look for the markers directly inside the header area
+  if(!fmt){
+    const at = findMarker(view, 0, HEADER_SCAN_LIMIT, 'fmt ');
+    if(at >= 0 && at + 8 <= total){
+      fmt = parseFmt(buf, at + 8, view.getUint32(at+4, true));
+      if(fmt){
+        log.push(`<span class="l-warn">⚠ format found by direct search at byte ${at}: ${fmtLabel(fmt)}</span>`);
+        needsFix = true;
+      }
+    }
+  }
+  if(!data){
+    const from = fmt ? fmt.start + 16 : 0;
+    const at = findMarker(view, from, from + HEADER_SCAN_LIMIT, 'data');
+    if(at >= 0 && at + 8 <= total){
+      const start = at + 8;
+      data = {start, size: total - start};
+      log.push(`<span class="l-warn">⚠ audio start found by direct search at byte ${start}</span>`);
+      needsFix = true;
+    }
+  }
+
+  // metadata found before a failed walk is only kept if the walk reached data
+  if(!hasRiff || (walkFailed && !data)) { pre.length = 0; post.length = 0; }
+  // keep the original chunk order; a fmt found by direct search goes first
+  const chunks = pre.some(c => c.id === 'fmt ') ? pre
+               : fmt ? [{id:'fmt ', start: fmt.start, size: fmt.size}, ...pre] : pre;
+
+  return {total, log, segments, fmt, data, chunks, post, needsFix, hasRiff};
+}
+
+async function processFile(file){
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.innerHTML = `
+    <div class="card-head">
+      <div class="name">${escapeHtml(file.name)}</div>
+      <div class="status warn">analyzing…</div>
+    </div>
+    <div class="chunkmap" aria-hidden="true"></div>
+    <div class="log">Reading file (${fmtMB(file.size)})…</div>
+    <div class="actions"></div>
+    <div class="player"><div class="cap"></div><audio controls preload="metadata"></audio></div>
+    <div class="manual"></div>
+  `;
+  filesEl.prepend(card);
+  const statusEl = card.querySelector('.status');
+  const logEl = card.querySelector('.log');
+
+  let buf;
+  try {
+    buf = await file.arrayBuffer();
+  } catch(err){
+    statusEl.className = 'status bad'; statusEl.textContent = 'cannot read';
+    logEl.innerHTML = `<span class="l-bad">✗ the browser couldn't load this file (${fmtMB(file.size)}). It may be too large for available memory — try another browser or close other tabs.</span>`;
+    card.querySelector('.chunkmap').remove();
+    return;
+  }
+
+  const a = analyze(buf);
+  const {total, log, fmt, data} = a;
+  const canAuto = !!(fmt && data);
+
+  let statusClass, statusText;
+  if(canAuto){
+    const usable = alignDown(data.size, fmt.frameBytes);
+    const secs = fmt.byteRate ? usable / fmt.byteRate : usable / (fmt.sampleRate * fmt.frameBytes);
+    log.push(`<span class="l-ok">→ ${fmtDuration(secs)} of audio (${fmtMB(usable)})</span>`);
+    if(a.needsFix){
+      statusClass = 'warn'; statusText = 'header needs fixing';
+      log.push(`<span class="l-ok">→ ready to repair</span>`);
+    } else {
+      statusClass = 'ok'; statusText = 'OK';
+      log.push(`<span class="l-ok">→ this file looks healthy, no repair needed. If it still won't play, try manual mode.</span>`);
+    }
+  } else {
+    statusClass = 'bad'; statusText = 'needs manual input';
+    log.push(`<span class="l-bad">✗ the format information is lost — set it by hand below</span>`);
+  }
+  statusEl.className = 'status ' + statusClass;
+  statusEl.textContent = statusText;
+  logEl.innerHTML = log.join('\n');
+
+  const mapEl = card.querySelector('.chunkmap');
+  if(!a.hasRiff) a.segments.push({cls:'seg-bad', bytes: total});
+  a.segments.forEach(seg=>{
+    const d = document.createElement('div');
+    d.className = seg.cls;
+    d.style.width = Math.max(0.5, (seg.bytes/total)*100) + '%';
+    mapEl.appendChild(d);
+  });
+  const legend = document.createElement('div');
+  legend.className = 'legend';
+  legend.innerHTML = [['seg-riff','header'],['seg-fmt','format'],['seg-unknown','metadata'],['seg-data','audio'],['seg-bad','unreadable']]
+    .filter(([c]) => a.segments.some(s => s.cls === c))
+    .map(([c,t]) => `<span><i class="${c}"></i>${t}</span>`).join('');
+  mapEl.after(legend);
+
+  const actionsEl = card.querySelector('.actions');
+  const manualEl = card.querySelector('.manual');
+  const playerEl = card.querySelector('.player');
+  const audioEl = playerEl.querySelector('audio');
+  let previewUrl = null;
+
+  function preview(blob, caption){
+    if(previewUrl) URL.revokeObjectURL(previewUrl);
+    previewUrl = URL.createObjectURL(blob);
+    audioEl.src = previewUrl;
+    playerEl.querySelector('.cap').textContent = caption;
+    playerEl.classList.add('show');
+    audioEl.play().catch(()=>{});
+  }
+
+  function autoBlob(){
+    const size = alignDown(data.size, fmt.frameBytes);
+    // 'fact' holds the frame count of non-PCM files and is stale after a crash
+    const fact = c => {
+      if(c.id !== 'fact' || c.size < 4) return c;
+      const b = new Uint8Array(c.size);
+      b.set(new Uint8Array(buf, c.start, c.size));
+      new DataView(b.buffer).setUint32(0, size / fmt.frameBytes, true);
+      return {id: c.id, bytes: b};
+    };
+    const pre = a.chunks.map(fact);
+    return buildWav(buf, pre, data.start, size, a.post);
+  }
+
+  function guard(fn){
+    try { fn(); }
+    catch(err){ logEl.innerHTML += `\n<span class="l-bad">✗ ${escapeHtml(err.message)}</span>`; }
+  }
+
+  if(canAuto){
+    const btn = document.createElement('button');
+    btn.textContent = a.needsFix ? '⬇ Repair & download' : '⬇ Rebuild & download';
+    if(!a.needsFix) btn.className = 'secondary';
+    btn.onclick = () => guard(() => downloadBlob(autoBlob(), repairedName(file.name)));
+    const pv = document.createElement('button');
+    pv.className = 'secondary';
+    pv.textContent = '▶ Preview';
+    pv.onclick = () => guard(() => preview(autoBlob(), `Preview — ${fmtLabel(fmt)}`));
+    actionsEl.append(pv, btn);
+  }
+
+  const manualBtn = document.createElement('button');
+  manualBtn.className = 'secondary';
+  manualBtn.textContent = canAuto ? '⚙ Force manual parameters' : '⚙ Manual parameters';
+  manualBtn.onclick = () => manualEl.classList.toggle('show');
+  actionsEl.appendChild(manualBtn);
+
+  const sr0 = fmt ? fmt.sampleRate : 48000;
+  const ch0 = fmt ? fmt.channels : 2;
+  const bits0 = fmt ? fmt.bitsPerSample : 24;
+  const af0 = fmt && fmt.audioFormat === 3 ? 3 : 1;
+  // a zeroed-out header usually still occupies the standard 44 bytes
+  const zeroHead = total >= 44 && new Uint8Array(buf, 0, 44).every(x => x === 0);
+  const off0 = data ? data.start : (a.hasRiff || zeroHead ? 44 : 0);
+  const opts = (vals, sel, label=v=>v) => vals.map(v => `<option value="${v}"${v==sel?' selected':''}>${label(v)}</option>`).join('');
+  const srList = [8000,11025,16000,22050,32000,44100,48000,88200,96000,176400,192000,352800,384000];
+  if(!srList.includes(sr0)) srList.push(sr0);
+  const chList = [1,2,3,4,5,6,8,10,12,16];
+  if(!chList.includes(ch0)) chList.push(ch0);
+
+  manualEl.innerHTML = `
+    <p class="intro">Builds a brand-new header and treats everything after the data offset as raw audio. Unsure? See “Manual mode” further down the page, and use ▶ Preview to test each combination.</p>
+    <div class="row">
+      <div class="field"><label>Sample rate</label>
+        <select data-k="sr">${opts(srList.sort((x,y)=>x-y), sr0)}</select></div>
+      <div class="field"><label>Channels</label>
+        <select data-k="ch">${opts(chList, ch0, v => v===1?'1 (mono)':v===2?'2 (stereo)':v)}</select></div>
+      <div class="field"><label>Bit depth</label>
+        <select data-k="bits">${opts([8,16,24,32,64], bits0)}</select></div>
+      <div class="field"><label>Format</label>
+        <select data-k="fmt">${opts([1,3], af0, v => v===1?'PCM (integer)':'IEEE float')}</select></div>
+      <div class="field"><label>Data offset (bytes)</label>
+        <input type="number" data-k="offset" value="${off0}" min="0" max="${total}"></div>
+    </div>
+    <div class="err"></div>
+    <div class="actions" style="padding:0">
+      <button class="secondary manual-preview">▶ Preview</button>
+      <button class="manual-build">⬇ Build header &amp; download</button>
+    </div>
+  `;
+  const val = k => manualEl.querySelector(`[data-k="${k}"]`).value;
+  const errEl = manualEl.querySelector('.err');
+
+  function manualBlob(){
+    const sr = +val('sr'), ch = +val('ch'), bits = +val('bits'), afmt = +val('fmt');
+    const off = Math.min(total, Math.max(0, Math.floor(+val('offset') || 0)));
+    errEl.textContent = '';
+    if(afmt === 3 && bits !== 32 && bits !== 64){
+      errEl.textContent = 'IEEE float needs a 32 or 64-bit depth.';
+      return null;
+    }
+    if(afmt === 1 && bits === 64){
+      errEl.textContent = '64-bit audio is always float — switch format to IEEE float.';
+      return null;
+    }
+    const blockAlign = ch * (bits/8);
+    const fmtBuf = new ArrayBuffer(16);
+    const fv = new DataView(fmtBuf);
+    fv.setUint16(0, afmt, true);
+    fv.setUint16(2, ch, true);
+    fv.setUint32(4, sr, true);
+    fv.setUint32(8, sr * blockAlign, true);
+    fv.setUint16(12, blockAlign, true);
+    fv.setUint16(14, bits, true);
+    const blob = buildWav(buf, [{id:'fmt ', bytes: new Uint8Array(fmtBuf)}], off, alignDown(total - off, blockAlign), []);
+    blob.label = `${sr} Hz, ${ch} ch, ${bits}-bit ${afmt===3?'float':'PCM'}, offset ${off}`;
+    return blob;
+  }
+  manualEl.querySelector('.manual-preview').onclick = () => guard(() => {
+    const b = manualBlob(); if(b) preview(b, 'Preview — ' + b.label);
+  });
+  manualEl.querySelector('.manual-build').onclick = () => guard(() => {
+    const b = manualBlob(); if(b) downloadBlob(b, repairedName(file.name));
+  });
+
+  if(!canAuto) manualEl.classList.add('show');
+}
+
+function alignDown(n, block){
+  if(!block || block <= 0) return n;
+  return n - (n % block);
+}
+
+// chunks: {id, start, size} slices of the source buffer, or {id, bytes}
+function buildWav(buf, pre, dataStart, dataSize, post){
+  const parts = [];
+  let body = 4; // 'WAVE'
+  const add = (id, bytes) => {
+    const h = new DataView(new ArrayBuffer(8));
+    writeStr(h, 0, id);
+    h.setUint32(4, bytes.byteLength, true);
+    parts.push(h.buffer, bytes);
+    body += 8 + bytes.byteLength;
+    if(bytes.byteLength % 2){ parts.push(new Uint8Array(1)); body += 1; }
+  };
+  const slice = c => c.bytes || new Uint8Array(buf, c.start, c.size);
+  pre.forEach(c => add(c.id, slice(c)));
+  add('data', new Uint8Array(buf, dataStart, dataSize));
+  post.forEach(c => add(c.id, slice(c)));
+  if(body + 8 > MAX_WAV_BYTES) throw new Error('the result would exceed the 4 GB WAV limit');
+
+  const riff = new DataView(new ArrayBuffer(12));
+  writeStr(riff, 0, 'RIFF');
+  riff.setUint32(4, body, true);
+  writeStr(riff, 8, 'WAVE');
+  return new Blob([riff.buffer, ...parts], {type:'audio/wav'});
+}
+
+function writeStr(view, offset, str){
+  for(let i=0;i<str.length;i++) view.setUint8(offset+i, str.charCodeAt(i));
+}
+
+function repairedName(name){
+  return name.replace(/\.(wav|wave|bwf)$/i, '') + '_repaired.wav';
+}
+
+function downloadBlob(blob, name){
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 60000);
+}
+
+function fmtMB(n){ return (n/1024/1024).toFixed(2) + ' MB'; }
+
+function fmtDuration(s){
+  if(!isFinite(s)) return '?';
+  const h = Math.floor(s/3600), m = Math.floor(s%3600/60), sec = (s%60).toFixed(1);
+  return (h ? h + ':' + String(m).padStart(2,'0') : m) + ':' + sec.padStart(4,'0');
+}
+
+function escapeHtml(s){
+  return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+</script>
+</body>
+</html>

@@ -15,6 +15,14 @@ Open `index.html` in Google Chrome (or host it as a static page, e.g. GitHub Pag
 - Trims the audio to a whole number of frames and adds the RIFF pad byte when needed
 - Manual mode builds a new header from sample rate, channels, bit depth, format (PCM / IEEE float) and data offset, with preview to test combinations by ear
 
+## Before you post a comment
+
+**"My file is 0 bytes."** That's a file-system problem, not a header problem: the audio isn't inside the file. Try the recorder's own recovery or a data-recovery tool such as PhotoRec first, then bring the recovered file here.
+
+**"Tool X already does this."** Quite possibly, and if it works for you, keep using it. WAV Doctor's angle is no installation, no upload, metadata preserved, preview before download and a manual mode, on any computer with a browser.
+
+**"Is it open source?"** It's source-available, not open source: free for everyone to use (including paid work), share and modify, but not to sell or to build a competing product from. See License below.
+
 ## Limits
 
 **File size:** the whole file is loaded into memory, so the practical limit is around 1–2 GB depending on the browser and available RAM.

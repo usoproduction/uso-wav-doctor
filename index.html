@@ -274,7 +274,8 @@
       <div class="box no">
         <h3>Can't fix</h3>
         <ul>
-          <li>Audio that was never written to disk — if the file is 0 KB or tiny, the audio isn't in it</li>
+          <li>Files that show <b>0 bytes</b>: the audio isn't inside the file, so it has to be recovered from the card first (see the FAQ below)</li>
+          <li>Audio that never reached the disk, for example a file that contains only zeros</li>
           <li>Files damaged by a corrupted card or drive (use a file-recovery tool first, then come back)</li>
           <li>Dropouts, clicks or gaps inside the recording itself</li>
           <li>Compressed formats: MP3, AAC, FLAC, OGG, ALAC…</li>
@@ -302,6 +303,18 @@
 
   <section class="doc" id="faq">
     <h2>FAQ</h2>
+    <details id="zero-bytes">
+      <summary>My file shows 0 bytes (or 0 KB). Can this fix it?</summary>
+      <p>Not directly. A file size of 0 means the card's file system was never updated before the power went off: the audio may still be on the card, but it isn't inside the file, so there is nothing for any header-repair tool to work on. Stop recording on that card, then first try your recorder's own recovery (many recorders offer to recover the last take when you power them on with the same card), or a data-recovery program such as the free <a href="https://www.cgsecurity.org/wiki/PhotoRec" target="_blank" rel="noopener">PhotoRec</a>. If the recovered file then won't play, bring it here.</p>
+    </details>
+    <details>
+      <summary>How is this different from other WAV repair tools?</summary>
+      <p>There are other good options: your recorder's built-in recovery, desktop repair apps and command-line scripts. If one of them already works for you, keep using it. WAV Doctor is meant for the moment you need a fix right now on any computer: nothing to install, nothing uploaded, BWF and iXML metadata kept, a preview before you download, and a manual mode when the format information is gone.</p>
+    </details>
+    <details>
+      <summary>Is it open source?</summary>
+      <p>The code is public on <a href="https://github.com/usoproduction/uso-wav-doctor" target="_blank" rel="noopener">GitHub</a>, so anyone can read it and check that nothing leaves the browser. Strictly speaking it is <i>source-available</i>, not open source: it's released under the PolyForm Shield License, which lets everyone use it for free, including in paid work, and share or modify it, but not sell it or build a competing product from it.</p>
+    </details>
     <details>
       <summary>Is my audio uploaded or stored anywhere?</summary>
       <p>No. The file is read and rebuilt by your browser on your own computer. Nothing is sent over the network, there are no cookies and no analytics. You can save this page and use it offline.</p>
@@ -311,8 +324,12 @@
       <p>Never. The browser has no way to write back to it: the tool only creates a new <code>_repaired.wav</code> copy.</p>
     </details>
     <details>
+      <summary>Can I check that nothing is uploaded?</summary>
+      <p>Yes. Load the page, disconnect from the internet, then use it: everything keeps working. You can also watch the Network tab of your browser's developer tools, or read the code on GitHub.</p>
+    </details>
+    <details>
       <summary>Why did my file break in the first place?</summary>
-      <p>A WAV file starts with a short header that says how long the audio is. Most recording apps write a placeholder there and fill in the real values only when you press stop. If the app crashes first, the audio is on disk but the header still says "0 bytes", so players think the file is empty. This tool measures the real length and rewrites the header.</p>
+      <p>A WAV file starts with a short header that says how long the audio is. Most recording apps write a placeholder there and fill in the real values only when you press stop. If the app crashes first, the audio is on disk but the header still declares an audio length of zero, so players think the file is empty even though its size in the Finder or Explorer is large. This tool measures the real length and rewrites the header.</p>
     </details>
     <details>
       <summary>How large can files be?</summary>
@@ -335,9 +352,9 @@
 
   <footer>
     <p><b>Privacy:</b> everything happens locally in your browser. No uploads, no cookies, no tracking.</p>
-    <p><b>License:</b> free for everyone to use, including in paid professional work. You may share and modify it, but you may not sell it, repackage it or offer a competing product or service based on it. Source available under the <a href="https://polyformproject.org/licenses/shield/1.0.0" target="_blank" rel="noopener">PolyForm Shield License 1.0.0</a>.</p>
+    <p><b>License:</b> free for everyone to use, including in paid professional work. You may share and modify it, but you may not sell it, repackage it or offer a competing product or service based on it. Source-available (not open source) under the <a href="https://polyformproject.org/licenses/shield/1.0.0" target="_blank" rel="noopener">PolyForm Shield License 1.0.0</a> · <a href="https://github.com/usoproduction/uso-wav-doctor" target="_blank" rel="noopener">source code on GitHub</a>.</p>
     <p><b>Disclaimer:</b> provided as-is, without warranty. Always keep the original file until you've checked the repaired copy.</p>
-    <p>Version 1.0 · October 2026 · tested on Google Chrome</p>
+    <p>Version 1.0.1 · October 2026 · tested on Google Chrome</p>
     <div class="credit">U.S.O. Production — <a href="https://unidentifiedsoundobject.com/" target="_blank" rel="noopener">unidentifiedsoundobject.com</a></div>
   </footer>
 </div>
@@ -599,8 +616,21 @@ async function processFile(file){
     return;
   }
 
+  if(buf.byteLength === 0){
+    statusEl.className = 'status bad'; statusEl.textContent = 'empty file';
+    logEl.innerHTML = `<span class="l-bad">✗ this file is 0 bytes: the audio is not inside it.</span>\n` +
+      `<span class="l-dim">  The recorder's file system was never updated before the crash or power cut.\n` +
+      `  The audio may still be on the card: stop recording on it and try the recorder's own\n` +
+      `  recovery or a data-recovery program first. See "My file shows 0 bytes" in the FAQ below.</span>`;
+    card.querySelector('.chunkmap').remove();
+    return;
+  }
+
   const a = analyze(buf);
   const {total, log, fmt, data} = a;
+  if(data && isAllZero(buf, data.start, total)){
+    log.push(`<span class="l-warn">⚠ the audio area contains only zeros. If you expected sound, the audio never reached the disk\n  (common when a recorder reserves space for a take it couldn't finish). A header repair can't bring it back.</span>`);
+  }
   const canAuto = !!(fmt && data);
 
   let statusClass, statusText;
@@ -759,6 +789,12 @@ async function processFile(file){
   });
 
   if(!canAuto) manualEl.classList.add('show');
+}
+
+function isAllZero(buf, from, to){
+  const bytes = new Uint8Array(buf, from, to - from);
+  for(let i = 0; i < bytes.length; i++) if(bytes[i] !== 0) return false;
+  return bytes.length > 0;
 }
 
 function alignDown(n, block){
